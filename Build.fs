@@ -30,13 +30,13 @@ Target.create "Bundle" (fun _ ->
 
 Target.create "Azure" (fun _ ->
     let web = webApp {
-        name "boq"
+        name "ThaiBoQ"
         operating_system OS.Windows
         runtime_stack Runtime.DotNet60
         zip_deploy "deploy"
     }
     let deployment = arm {
-        location Location.WestEurope
+        location Location.SoutheastAsia
         add_resource web
     }
 

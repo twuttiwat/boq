@@ -2,43 +2,25 @@ module Server
 
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
+open Microsoft.AspNetCore.Http
+open Microsoft.Extensions.Configuration
+open Microsoft.Extensions.DependencyInjection
+open Microsoft.Extensions.Logging
 open Saturn
 
+open ServerApi
 open Shared
-
-module Storage =
-    let todos = ResizeArray()
-
-    let addTodo (todo: Todo) =
-        if Todo.isValid todo.Description then
-            todos.Add todo
-            Ok()
-        else
-            Error "Invalid todo"
-
-    do
-        addTodo (Todo.create "Create new SAFE project")
-        |> ignore
-
-        addTodo (Todo.create "Write your app") |> ignore
-        addTodo (Todo.create "Ship it !!!") |> ignore
-
-let todosApi =
-    { getTodos = fun () -> async { return Storage.todos |> List.ofSeq }
-      addTodo =
-        fun todo ->
-            async {
-                return
-                    match Storage.addTodo todo with
-                    | Ok () -> todo
-                    | Error e -> failwith e
-            } }
 
 let webApp =
     Remoting.createApi ()
+    |> Remoting.fromContext (fun (ctx: HttpContext) -> ctx.GetService<TodosApi>().Build())
     |> Remoting.withRouteBuilder Route.builder
-    |> Remoting.fromValue todosApi
     |> Remoting.buildHttpHandler
+
+let serviceConfig (services: IServiceCollection) =
+    services
+        .AddSingleton<TodosApi>()
+        .AddLogging()
 
 let app =
     application {
@@ -46,6 +28,8 @@ let app =
         memory_cache
         use_static "public"
         use_gzip
+        service_config serviceConfig
+        host_config Env.configureHost
     }
 
 [<EntryPoint>]

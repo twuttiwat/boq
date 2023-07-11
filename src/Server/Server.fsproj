@@ -6,6 +6,8 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="paket.references" />
+    <Compile Include="Env.fs" />
+    <Compile Include="ServerApi.fs" />
     <Compile Include="Server.fs" />
   </ItemGroup>
   <ItemGroup>

@@ -22,7 +22,7 @@ let serviceConfig (services: IServiceCollection) =
         .AddSingleton<TodosApi>()
         .AddLogging()
 
-let app =
+let application =
     application {
         use_router webApp
         memory_cache
@@ -32,7 +32,4 @@ let app =
         host_config Env.configureHost
     }
 
-[<EntryPoint>]
-let main _ =
-    run app
-    0
+run application

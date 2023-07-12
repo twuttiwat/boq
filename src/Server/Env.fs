@@ -101,15 +101,35 @@ let configureVariables (builder: IHostBuilder) =
         let variables = combinedVariables()
         configBuilder.AddInMemoryCollection(variables) |> ignore)
 
+let setLogCommon (configureLogger: LoggerConfiguration) =
+    configureLogger
+        .MinimumLevel.Information()
+        .Enrich.FromLogContext()
+        .WriteTo.Console(
+            theme= AnsiConsoleTheme.Literate,
+            outputTemplate= "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+            applyThemeToRedirectedOutput= true
+        )
+
+let aspnetcoreEnvironmentDev =
+    Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") = Environments.Development
+
+let setLogAzure blobCS (configureLogger: LoggerConfiguration) =
+    configureLogger
+        .WriteTo.AzureBlobStorage(
+            connectionString= blobCS
+            )
+
 let configureHost (builder: IHostBuilder) =
-    builder.UseSerilog(
-        fun context configureLogger ->
-            configureLogger
-                .MinimumLevel.Information()
-                .Enrich.FromLogContext()
-                .WriteTo.Console(
-                    theme= AnsiConsoleTheme.Literate,
-                    outputTemplate= "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
-                    applyThemeToRedirectedOutput= true
-                ) |> ignore)
+    builder
+        .UseSerilog(
+            fun context configureLogger ->
+                let blobCS = context.Configuration.GetValue<string>("BLOB_CONNECTION_STRING")
+
+                configureLogger
+                |> setLogCommon
+                |> fun logCommon ->
+                    if aspnetcoreEnvironmentDev then logCommon else (setLogAzure blobCS logCommon)
+                |> ignore
+        )
     |> configureVariables

@@ -38,7 +38,7 @@ let todosApi (logger: ILogger) =
       addTodo =
         fun todo ->
             async {
-                logger.LogInformation("Executing {Function}", "addTodo")
+                logger.LogInformation("Executing {Function} with {Todo}", "addTodo", todo)
                 return
                     match Storage.addTodo todo with
                     | Ok () -> todo

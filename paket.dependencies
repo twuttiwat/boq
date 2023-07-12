@@ -23,4 +23,5 @@ nuget Fake.Core.Target
 nuget Fake.IO.FileSystem
 nuget Farmer
 nuget Serilog.AspNetCore
+nuget Serilog.Sinks.AzureBlobStorage
 nuget Serilog.Sinks.Console

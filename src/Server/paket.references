@@ -3,3 +3,4 @@ Fable.Remoting.Giraffe
 Fsharp.Core
 Serilog.AspNetCore
 Serilog.Sinks.Console
+Serilog.Sinks.AzureBlobStorage

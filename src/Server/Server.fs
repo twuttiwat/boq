@@ -2,12 +2,14 @@ module Server
 
 open Fable.Remoting.Server
 open Fable.Remoting.Giraffe
+open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Logging
 open Saturn
 
+open PriceScraper
 open ServerApi
 open Shared
 
@@ -19,8 +21,12 @@ let webApp =
 
 let serviceConfig (services: IServiceCollection) =
     services
+        .AddSingleton<PriceScraper>()
         .AddSingleton<TodosApi>()
-        .AddLogging()
+
+let configureApp (app: IApplicationBuilder) =
+    app.ApplicationServices.GetRequiredService<PriceScraper>().Run()
+    app
 
 let application =
     application {
@@ -29,6 +35,7 @@ let application =
         use_static "public"
         use_gzip
         service_config serviceConfig
+        app_config configureApp
         host_config Env.configureHost
     }
 

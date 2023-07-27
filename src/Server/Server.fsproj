@@ -7,11 +7,15 @@
   <ItemGroup>
     <None Include="paket.references" />
     <Compile Include="Env.fs" />
+    <Compile Include="PriceScraper.fs" />
     <Compile Include="ServerApi.fs" />
     <Compile Include="Server.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Shared\Shared.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="data\" />
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

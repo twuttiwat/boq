@@ -4,3 +4,4 @@ Fsharp.Core
 Serilog.AspNetCore
 Serilog.Sinks.Console
 Serilog.Sinks.AzureBlobStorage
+FSharp.Data

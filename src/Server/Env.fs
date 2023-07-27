@@ -107,7 +107,7 @@ let setLogCommon (configureLogger: LoggerConfiguration) =
         .Enrich.FromLogContext()
         .WriteTo.Console(
             theme= AnsiConsoleTheme.Literate,
-            outputTemplate= "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}",
+            outputTemplate= "[{Timestamp:HH:mm:ss} {Level:u3}] <{SourceContext}>: {Message:lj}{NewLine}{Exception}",
             applyThemeToRedirectedOutput= true
         )
 

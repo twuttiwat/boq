@@ -19,3 +19,4 @@ release.sh
 *.DotSettings.user
 
 appsettings.json
+**/data/raw/**

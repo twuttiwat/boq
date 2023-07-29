@@ -31,7 +31,7 @@ Target.create "Bundle" (fun _ ->
 Target.create "Azure" (fun _ ->
     let web = webApp {
         name "ThaiBoQ"
-        operating_system OS.Windows
+        operating_system OS.Linux
         runtime_stack Runtime.DotNet60
         zip_deploy "deploy"
     }

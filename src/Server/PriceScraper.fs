@@ -23,11 +23,13 @@ type System.DateTime with
 type YearMonth = int*int
 
 type IScraper =
-    abstract member Start: YearMonths: YearMonth list -> unit
+    abstract member Start: RefreshInterval: int -> YearMonths: YearMonth list -> unit
 
 module BkkScraper =
     [<Literal>]
     let Province = 10
+    [<Literal>]
+    let ProvinceName = "Bangkok"
 
     let private requestPriceBytes (priceUrl:string) =
         task {
@@ -71,9 +73,11 @@ module BkkScraper =
                 file.Directory.Create()
                 logger.LogInformation("Writing price file to {OutputPath}", outputPath)
                 do! File.WriteAllTextAsync(outputPath, response)
+                return true
             else
                 logger.LogError("Error while requesting price on {PriceUrl}", priceUrl)
                 logger.LogError("{Response}", response)
+                return false
         }
 
     let alreadyDownloaded year month =
@@ -81,27 +85,35 @@ module BkkScraper =
         |> File.Exists
 
 
+    type RefreshInterval = int
     type YearMonth = int*int
-    type State = { YearMonthsQueue: Set<YearMonth> }
+    type State = { YearMonthsQueue: Set<YearMonth>; RefreshInterval: int }
     type Msg =
-        | Start of YearMonth list
+        | Start of (RefreshInterval*YearMonth list)
+        | Refresh
 
     let initState () =
-        { YearMonthsQueue = Set.empty }
+        let oneHour = 1000 * 60 * 60
+        { YearMonthsQueue = Set.empty; RefreshInterval = oneHour }
 
-    let scrapeMonth (logger: ILogger) (year,month) =
+    let scrapeMonth (logger: ILogger) (year,month) = async {
         if alreadyDownloaded year month then
-            logger.LogInformation("File of {Year}-{Month}-{Province} already downloaded. Do nothing.", year, month, Province)
+            logger.LogInformation("File of {Year}-{Month}-{Province} already downloaded. Do nothing.", year, month, ProvinceName)
+            return Some (year, month)
         else
             let priceUrl = priceUrl year month
             let outputPath = outputPath year month
 
-            downloadPriceFile logger priceUrl outputPath
-            |> Async.AwaitTask |> Async.RunSynchronously
+            let! canDownload = downloadPriceFile logger priceUrl outputPath |> Async.AwaitTask
+            return if canDownload then Some (year, month) else None
+    }
 
     let scrape (logger: ILogger) (yearMonths: YearMonth list) =
         yearMonths
-        |> List.iter (scrapeMonth logger)
+        |> List.map (scrapeMonth logger)
+        |> Async.Parallel
+        |> Async.RunSynchronously
+        |> Array.choose id
 
     type Scraper (logger: ILogger)  =
         let agent = MailboxProcessor<Msg>.Start(fun inbox ->
@@ -110,12 +122,23 @@ module BkkScraper =
             let rec messageLoop (state: State) = async {
                 let! msg = inbox.Receive ()
                 match msg with
-                | Start yearMonths ->
+                | Start (refreshInterval,yearMonths) ->
                     let newQueue = state.YearMonthsQueue + (yearMonths |> Set.ofList)
+                    let newState = { state with YearMonthsQueue =  newQueue
+                                                RefreshInterval = refreshInterval }
 
-                    scrape logger (newQueue |> Set.toList)
+                    inbox.Post Refresh
 
-                    let newState = { state with YearMonthsQueue =  newQueue  }
+                    return! messageLoop newState
+
+                | Refresh ->
+                    let fetchedYearMonths = scrape logger (state.YearMonthsQueue |> Set.toList)
+                    let newQueue = state.YearMonthsQueue - (fetchedYearMonths |> Set.ofArray)
+                    let newState = { state with YearMonthsQueue =  newQueue }
+
+                    do! Async.Sleep state.RefreshInterval
+                    inbox.Post Refresh
+
                     return! messageLoop newState
             }
 
@@ -124,7 +147,7 @@ module BkkScraper =
         )
 
         interface IScraper with
-            member _.Start yearMonths = agent.Post (Start yearMonths)
+            member _.Start refreshInterval yearMonths = agent.Post (Start (refreshInterval,yearMonths))
 
 module ProvinceCsv =
     [<Literal>]
@@ -189,12 +212,12 @@ module ProvinceScraper =
                 file.Directory.Create()
                 logger.LogInformation("Writing price file to {OutputPath}", outputPath)
                 do! File.WriteAllTextAsync(outputPath, response)
-                return (Ok ())
+                return true
             else
-                let errorMsg = $"Error while requesting price {year}/{month}/{row.Province}/{row.ProvinceName}"
+                let errorMsg = $"Error while requesting price {year}/{month}/{row.Province}/{row.ProvinceNameEn}"
                 logger.LogError(errorMsg)
                 // logger.LogError("{Response}", response)
-                return (Error errorMsg)
+                return false
         }
 
     let alreadyDownloaded year month province =
@@ -202,39 +225,37 @@ module ProvinceScraper =
         |> File.Exists
 
 
-    type State = { YearMonthsQueue: Set<YearMonth>;  ProvinceRow: ProvinceCsv.ProvinceCsv.Row }
+    type RefreshInterval = int
+    type State = {
+        YearMonthsQueue: Set<YearMonth>
+        RefreshInterval: RefreshInterval
+        ProvinceRow: ProvinceCsv.ProvinceCsv.Row
+    }
     type Msg =
-        | Start of YearMonth list
-        | Retry
+        | Start of (RefreshInterval * YearMonth list)
+        | Refresh
 
     let initState row =
-        { YearMonthsQueue = Set.empty;  ProvinceRow = row }
+        let oneHour = TimeSpan.FromHours(1).TotalMilliseconds |> int
+        { YearMonthsQueue = Set.empty; RefreshInterval = oneHour; ProvinceRow = row }
 
-    let scrapeMonth (logger: ILogger) (agent: MailboxProcessor<Msg>) (state: State) (year,month) =
-        let row = state.ProvinceRow
+    let scrapeMonth (logger: ILogger) (row: ProvinceCsv.ProvinceCsv.Row) (year,month) = async {
         if alreadyDownloaded year month row.Province then
             logger.LogInformation("File of {Year}-{Month}-{Province} already downloaded. Do nothing.",
-                                    year, month, row.Province)
-            let updatedQueue = state.YearMonthsQueue |> Set.remove (year,month)
-            { state with YearMonthsQueue = updatedQueue }
+                                    year, month, row.ProvinceNameEn)
+            return Some (year, month)
         else
             let outputPath = outputPath year month row.Province
-            task {
-                let! res = downloadPriceFile logger year month row outputPath
-                match res with
-                | Ok _ -> ()
-                | Result.Error _ ->
-                    agent.Post Retry
-                    ()
-                return state
-            }
-            |> Async.AwaitTask |> Async.RunSynchronously
+            let! canDownload = downloadPriceFile logger year month row outputPath |> Async.AwaitTask
+            return if canDownload then Some (year,month) else None
+    }
 
-    let scrape (logger: ILogger) (agent: MailboxProcessor<Msg>) (state: State) =
-        state.YearMonthsQueue
-        |> Set.toList
-        |> List.map (scrapeMonth logger agent state)
-        |> List.fold (fun acc input -> acc |> Set.intersect input.YearMonthsQueue ) state.YearMonthsQueue
+    let scrape (logger: ILogger) (row: ProvinceCsv.ProvinceCsv.Row) (yearMonths: YearMonth list) =
+        yearMonths
+        |> List.map (scrapeMonth logger row)
+        |> Async.Parallel
+        |> Async.RunSynchronously
+        |> Array.choose id
 
     type Scraper (logger: ILogger, row:ProvinceCsv.ProvinceCsv.Row)  =
         let agent = MailboxProcessor<Msg>.Start(fun inbox ->
@@ -243,22 +264,24 @@ module ProvinceScraper =
             let rec messageLoop (state: State) = async {
                 let! msg = inbox.Receive ()
                 match msg with
-                | Start yearMonths ->
-                    let newState = { state with YearMonthsQueue = state.YearMonthsQueue + (yearMonths |> Set.ofList) }
+                | Start (refreshInterval, yearMonths) ->
+                    let newQueue = state.YearMonthsQueue + (yearMonths |> Set.ofList)
+                    let newState = { state with YearMonthsQueue =  newQueue
+                                                RefreshInterval = refreshInterval }
 
-                    let updatedQueue = scrape logger inbox newState
+                    inbox.Post Refresh
 
-                    return! messageLoop { state with YearMonthsQueue = updatedQueue }
+                    return! messageLoop newState
 
-                | Retry ->
-                    logger.LogInformation("{Province}: Error occurs. Will retry tomorrow.", row.ProvinceNameEn)
-                    let oneDay = 1000 * 60 * 60 * 24
-                    do! Async.Sleep oneDay
+                | Refresh ->
+                    let fetchedYearMonths = scrape logger state.ProvinceRow (state.YearMonthsQueue |> Set.toList)
+                    let newQueue = state.YearMonthsQueue - (fetchedYearMonths |> Set.ofArray)
+                    let newState = { state with YearMonthsQueue =  newQueue }
 
-                    logger.LogInformation("{Province}: Retrying", row.ProvinceName)
-                    let updatedQueue = scrape logger inbox state
+                    do! Async.Sleep state.RefreshInterval
+                    inbox.Post Refresh
 
-                    return! messageLoop { state with YearMonthsQueue = updatedQueue }
+                    return! messageLoop newState
             }
 
             initState row
@@ -266,7 +289,7 @@ module ProvinceScraper =
         )
 
         interface IScraper with
-            member _.Start yearMonths = agent.Post (Start yearMonths)
+            member _.Start refreshInterval yearMonths = agent.Post (Start (refreshInterval,yearMonths))
 
 type SectionRow = { Code: string; Desc: string }
 type PriceRow = { Code: string; Desc:string; Unit:string; UnitPrice:float }
@@ -313,9 +336,13 @@ type PriceScraper (logger: ILogger<PriceScraper>) =
         { Scrapers = allScrapers }
 
     let startAllScrapers state =
+        let oneDay = 1000 * 60 * 60 * 24
+        let threeSec = 1000 * 3
+        let oneMin = 1000 * 60
+        let refreshInterval = if Env.isDevelopment then oneMin else oneDay
         let yearMonths = getScrapeYearMonths ()
         state.Scrapers
-        |> Map.values |> Seq.map (fun sc -> async { sc.Start yearMonths } )
+        |> Map.values |> Seq.map (fun sc -> async { sc.Start refreshInterval yearMonths } )
         |> Async.Parallel
         |> Async.RunSynchronously
         |> ignore

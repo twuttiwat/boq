@@ -15,7 +15,7 @@
     <ProjectReference Include="..\Shared\Shared.fsproj" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="data\" />
+    <Content Include="data\province.csv" CopyToPublishDirectory="PreserveNewest"/>
   </ItemGroup>
   <Import Project="..\..\.paket\Paket.Restore.targets" />
 </Project>

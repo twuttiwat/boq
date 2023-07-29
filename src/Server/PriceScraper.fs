@@ -140,12 +140,10 @@ module ProvinceCsv =
         then path
         else findParent (DirectoryInfo(path).Parent.FullName) fileToFind
 
+    let provinceCsvPath() = Path.Combine(Env.serverPath(), "data", "province.csv")
 
-    let scraperRoot() = findParent __SOURCE_DIRECTORY__ "PriceScraper.fs"
-    let provinceCsvPath() = Path.Combine(scraperRoot(), "data", "province.csv")
     let load () =
         let csv = provinceCsvPath ()
-        printfn "CSV %s" csv
         ProvinceCsv.Load(csv).Rows |> List.ofSeq
 
 module ProvinceScraper =

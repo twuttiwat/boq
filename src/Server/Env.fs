@@ -37,6 +37,15 @@ let rec findParent (directory: string) (fileToFind: string) =
 
 let solutionRoot() = findParent __SOURCE_DIRECTORY__ "boq.sln"
 
+let serverRoot() = findParent __SOURCE_DIRECTORY__ "Server.fs"
+
+let serverPath() =
+    if isDevelopment then
+        serverRoot()
+    else
+        let serverDll = typeof<IAssemblyTag>.Assembly.Location
+        Directory.GetParent(serverDll).FullName
+
 /// Returns enviroment variables as a dictionary
 let environmentVars() =
     let variables = Dictionary<string, string>()
